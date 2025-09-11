@@ -1,0 +1,13 @@
+[package]
+name = "rollroll"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies.sdl3-image-sys]
+version = "0.1.0"
+features = ["build-from-source", "no-default", "sdlimage-vendored", "sdlimage-backend-stb", "sdlimage-png"]
+
+[dependencies.sdl3]
+version = "0.14.9"
+default-features = false
+features = ["image", "build-from-source"]

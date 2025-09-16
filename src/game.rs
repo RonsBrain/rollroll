@@ -5,6 +5,7 @@ use rand::seq::SliceRandom;
 use std::collections::{HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 const SQRT_3_OVER_4: f32 = 1.732_050_8 / 4.;
 static TILE_ID_GENERATOR: AtomicUsize = AtomicUsize::new(1);
@@ -179,43 +180,50 @@ impl Tiles {
         }
     }
 
-    fn process_tile_queue(&mut self) -> bool {
+    fn process_tile_queue(&mut self, max_time: Duration) -> bool {
         if self.tile_queue.is_empty() {
             return true;
         }
 
-        if let Some(tile) = self.tile_queue.pop_front() {
-            for position in tile.neighboring_positions() {
-                if position.x > -1.
-                    && position.x < 1.
-                    && position.y > -1.
-                    && position.y < 1.
-                    && !self
-                        .tiles
-                        .iter()
-                        .chain(self.tile_queue.iter())
-                        .any(|t| t.contains_point(position))
-                {
-                    let tile = self.make_triangle_at(position, tile.orientation.opposite());
-                    self.tile_queue.push_back(tile);
+        let start = Instant::now();
+
+        loop {
+            if let Some(tile) = self.tile_queue.pop_front() {
+                for position in tile.neighboring_positions() {
+                    if position.x > -1.
+                        && position.x < 1.
+                        && position.y > -1.
+                        && position.y < 1.
+                        && !self
+                            .tiles
+                            .iter()
+                            .chain(self.tile_queue.iter())
+                            .any(|t| t.contains_point(position))
+                    {
+                        let tile = self.make_triangle_at(position, tile.orientation.opposite());
+                        self.tile_queue.push_back(tile);
+                    }
                 }
+
+                self.tiles.insert(tile);
             }
 
-            self.tiles.insert(tile);
-        }
+            if self.tile_queue.is_empty() {
+                self.possible_tiles = self.tiles.len();
+                let mut possible_tiles = self.tiles.clone().into_iter().collect::<Vec<Tile>>();
+                possible_tiles.shuffle(&mut self.rng);
 
-        if self.tile_queue.is_empty() {
-            self.possible_tiles = self.tiles.len();
-            let mut possible_tiles = self.tiles.clone().into_iter().collect::<Vec<Tile>>();
-            possible_tiles.shuffle(&mut self.rng);
-
-            for tile in possible_tiles[0..50].iter() {
-                self.tiles.remove(tile);
-                self.carver_tiles.push_back(tile.clone());
+                for tile in possible_tiles[0..50].iter() {
+                    self.tiles.remove(tile);
+                    self.carver_tiles.push_back(tile.clone());
+                }
+                return true;
             }
-            true
-        } else {
-            false
+
+            let elapsed = start.elapsed();
+            if elapsed > max_time {
+                return false;
+            }
         }
     }
 
@@ -228,31 +236,42 @@ impl Tiles {
         None
     }
 
-    fn carve(&mut self) -> bool {
+    fn carve(&mut self, max_time: Duration) -> bool {
         if self.carver_tiles.is_empty() {
             return true;
         }
 
-        let carver = self.carver_tiles.pop_front().unwrap();
-        let possible_tiles = carver
-            .neighboring_positions()
-            .iter()
-            .map(|p| self.find_tile_at(*p))
-            .filter(|p| !p.is_none())
-            .map(|p| p.unwrap())
-            .collect::<Vec<Tile>>();
+        let start = Instant::now();
 
-        if let Some(choice) = possible_tiles.choose(&mut self.rng) {
-            self.tiles.remove(choice);
-            self.carver_tiles.push_back(choice.clone());
-        }
+        loop {
+            if let Some(carver) = self.carver_tiles.pop_front() {
+                let possible_tiles = carver
+                    .neighboring_positions()
+                    .iter()
+                    .map(|p| self.find_tile_at(*p))
+                    .filter(|p| !p.is_none())
+                    .map(|p| p.unwrap())
+                    .collect::<Vec<Tile>>();
 
-        let ratio = self.tiles.len() as f32 / self.possible_tiles as f32;
-        if ratio < 0.25 {
-            self.carver_tiles.clear();
-            return true;
+                if let Some(choice) = possible_tiles.choose(&mut self.rng) {
+                    self.tiles.remove(choice);
+                    self.carver_tiles.push_back(choice.clone());
+                }
+
+                let ratio = self.tiles.len() as f32 / self.possible_tiles as f32;
+                if ratio < 0.25 {
+                    self.carver_tiles.clear();
+                    return true;
+                }
+            } else {
+                return true;
+            }
+
+            let elapsed = start.elapsed();
+            if elapsed > max_time {
+                return false;
+            }
         }
-        false
     }
 }
 
@@ -264,7 +283,6 @@ enum GameState {
 
 pub struct Game {
     tiles: Tiles,
-    ticks: usize,
     state: GameState,
     player_position: Vec2,
 }
@@ -274,7 +292,6 @@ impl Game {
         let tiles = Tiles::new(0.1);
         Self {
             tiles,
-            ticks: 0,
             state: GameState::GeneratingTriangles,
             player_position: Vec2::ZERO,
         }
@@ -285,47 +302,34 @@ impl Game {
 
         self.player_position += movement * 0.01;
 
-        self.ticks += 1;
-        loop {
-            if self.tiles.process_tile_queue() {
-                break;
-            }
-        }
-
-        if self.ticks > 1 {
-            self.ticks = 0;
-            match self.state {
-                GameState::GeneratingTriangles => {
-                    if self.tiles.process_tile_queue() {
-                        self.state = GameState::Carving;
-                    }
-                }
-                GameState::Carving => {
-                    if self.tiles.carve() {
-                        self.state = GameState::Ready;
-                    }
-                }
-                GameState::Ready => {}
-            };
-        }
-
         command_arena.clear();
         command_arena.push(Clear(Vec3::new(0., 0., 0.)));
-        let color = match self.state {
-            GameState::GeneratingTriangles => Vec3::ONE * 0.5,
-            GameState::Carving => Vec3::ONE * 0.75,
-            _ => Vec3::new(1., 0., 1.),
-        };
-        for tile in self.tiles.tiles.iter() {
-            for (l, r) in tile.edges() {
-                command_arena.push(RenderLine((
-                    l - self.player_position,
-                    r - self.player_position,
-                    color,
-                )));
+
+        match self.state {
+            GameState::GeneratingTriangles => {
+                if self.tiles.process_tile_queue(Duration::from_millis(10)) {
+                    self.state = GameState::Carving;
+                }
             }
-        }
-        command_arena.push(RenderCircle((Vec2::ZERO, 0.01, Vec3::ONE)));
+            GameState::Carving => {
+                if self.tiles.carve(Duration::from_millis(10)) {
+                    self.state = GameState::Ready;
+                }
+            }
+            GameState::Ready => {
+                for tile in self.tiles.tiles.iter() {
+                    for (l, r) in tile.edges() {
+                        command_arena.push(RenderLine((
+                            l - self.player_position,
+                            r - self.player_position,
+                            Vec3::ONE,
+                        )));
+                    }
+                }
+                command_arena.push(RenderCircle((Vec2::ZERO, 0.01, Vec3::ONE)));
+            }
+        };
+
         command_arena
     }
 }

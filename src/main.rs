@@ -56,6 +56,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let window = video_subsystem
         .window("RollRoll", 800, 600)
+        .opengl()
         .fullscreen_desktop()
         .build()
         .map_err(|e| e.to_string())?;

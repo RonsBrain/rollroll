@@ -318,10 +318,14 @@ impl Game {
         };
         for tile in self.tiles.tiles.iter() {
             for (l, r) in tile.edges() {
-                command_arena.push(RenderLine((l, r, color)));
+                command_arena.push(RenderLine((
+                    l - self.player_position,
+                    r - self.player_position,
+                    color,
+                )));
             }
         }
-        command_arena.push(RenderCircle((self.player_position, 0.01, Vec3::ONE)));
+        command_arena.push(RenderCircle((Vec2::ZERO, 0.01, Vec3::ONE)));
         command_arena
     }
 }

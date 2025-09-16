@@ -4,7 +4,9 @@ use crate::game::{Command, Game};
 extern crate sdl2;
 
 use glam::{Vec2, Vec3};
+use sdl2::controller::{Axis, GameController};
 use sdl2::event::{Event, WindowEvent};
+use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use std::time::Duration;
@@ -25,9 +27,32 @@ fn logical_coordinates(point: &Vec2, (window_w, window_h): (i32, i32)) -> (i32, 
     )
 }
 
+fn logical_length(length: &f32, (window_w, window_h): (i32, i32)) -> i32 {
+    let dimension = window_w.max(window_h) as f32;
+    (dimension * ((length + 1.) * 0.5) - dimension * 0.5) as i32
+}
+
+const AXIS_THRESHOLD: i16 = 3000;
+fn normalize_axis(value: i16) -> f32 {
+    if (-AXIS_THRESHOLD..AXIS_THRESHOLD).contains(&value) {
+        return 0.;
+    }
+    let v = value as f32;
+    let min = i16::MIN as f32;
+    let max = i16::MAX as f32;
+    (2.0 * (v - min) / (max - min)) - 1.0
+}
+
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /* https://github.com/Rust-SDL2/rust-sdl2/blob/master/examples/game-controller.rs
+     *
+     * This says that the below line is necessary for some controllers to work on Windows.
+     */
+    sdl2::hint::set("SDL_JOYSTICK_THREAD", "1");
+
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
+    let game_controller_subsystem = sdl_context.game_controller()?;
 
     let window = video_subsystem
         .window("RollRoll", 800, 600)
@@ -41,6 +66,9 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut command_arena: Vec<Command> = Vec::new();
     let mut window_size: (i32, i32) = (0, 0);
     let mut game = Game::new();
+
+    let mut controller: Option<GameController> = None;
+    let mut movement = Vec2::ZERO;
 
     'running: loop {
         for event in event_pump.poll_iter() {
@@ -56,10 +84,35 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                 } => {
                     window_size = (x, y);
                 }
+                Event::ControllerDeviceAdded { which, .. } => {
+                    if let Ok(c) = game_controller_subsystem.open(which) {
+                        controller = Some(c);
+                    }
+                }
+                Event::ControllerAxisMotion {
+                    axis, which, value, ..
+                } => {
+                    if let Some(ref c) = controller
+                        && c.instance_id() == which
+                    {
+                        match axis {
+                            Axis::LeftX => {
+                                movement.x = normalize_axis(value);
+                            }
+                            Axis::LeftY => {
+                                /* Invert the Y axis, as the game uses Cartesian coordiantes and
+                                 * not screen coordinates.
+                                 */
+                                movement.y = -normalize_axis(value);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
                 _ => {}
             }
         }
-        command_arena = game.tick(command_arena);
+        command_arena = game.tick(&movement, command_arena);
         for command in command_arena.iter() {
             match command {
                 Command::Clear(normalized_color) => {
@@ -73,6 +126,12 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let end = logical_coordinates(p2, window_size);
                     canvas.set_draw_color(color);
                     canvas.draw_line(start, end)?;
+                }
+                Command::RenderCircle((p, r, normalized_color)) => {
+                    let color = vec3_to_color(normalized_color);
+                    let point = logical_coordinates(p, window_size);
+                    let radius = logical_length(r, window_size);
+                    canvas.filled_circle(point.0 as i16, point.1 as i16, radius as i16, color)?;
                 }
             }
         }

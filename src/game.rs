@@ -12,6 +12,7 @@ static TILE_ID_GENERATOR: AtomicUsize = AtomicUsize::new(1);
 pub enum Command {
     Clear(Vec3),
     RenderLine((Vec2, Vec2, Vec3)),
+    RenderCircle((Vec2, f32, Vec3)),
 }
 
 #[derive(Clone)]
@@ -265,6 +266,7 @@ pub struct Game {
     tiles: Tiles,
     ticks: usize,
     state: GameState,
+    player_position: Vec2,
 }
 
 impl Game {
@@ -274,11 +276,14 @@ impl Game {
             tiles,
             ticks: 0,
             state: GameState::GeneratingTriangles,
+            player_position: Vec2::ZERO,
         }
     }
 
-    pub fn tick(&mut self, mut command_arena: Vec<Command>) -> Vec<Command> {
+    pub fn tick(&mut self, movement: &Vec2, mut command_arena: Vec<Command>) -> Vec<Command> {
         use Command::*;
+
+        self.player_position += movement * 0.01;
 
         self.ticks += 1;
         loop {
@@ -316,6 +321,7 @@ impl Game {
                 command_arena.push(RenderLine((l, r, color)));
             }
         }
+        command_arena.push(RenderCircle((self.player_position, 0.01, Vec3::ONE)));
         command_arena
     }
 }

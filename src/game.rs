@@ -1,7 +1,13 @@
 use glam::{Vec2, Vec3};
-use std::collections::VecDeque;
+use rand::prelude::IndexedRandom;
+use rand::rngs::ThreadRng;
+use rand::seq::SliceRandom;
+use std::collections::{HashSet, VecDeque};
+use std::hash::{Hash, Hasher};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const SQRT_3_OVER_4: f32 = 1.732_050_8 / 4.;
+static TILE_ID_GENERATOR: AtomicUsize = AtomicUsize::new(1);
 
 pub enum Command {
     Clear(Vec3),
@@ -25,6 +31,7 @@ impl TriangleOrientation {
 
 #[derive(Clone)]
 struct Tile {
+    id: usize,
     center: Vec2,
     clockwise_points: Vec<Vec2>,
     orientation: TriangleOrientation,
@@ -32,6 +39,21 @@ struct Tile {
 }
 
 impl Tile {
+    fn new(
+        center: Vec2,
+        clockwise_points: Vec<Vec2>,
+        orientation: TriangleOrientation,
+        original_side_size: f32,
+    ) -> Self {
+        Self {
+            id: TILE_ID_GENERATOR.fetch_add(1, Ordering::Relaxed),
+            center,
+            clockwise_points,
+            orientation,
+            original_side_size,
+        }
+    }
+
     fn edges(&self) -> Vec<(Vec2, Vec2)> {
         let mut edges: Vec<(Vec2, Vec2)> = self
             .clockwise_points
@@ -90,18 +112,36 @@ impl Tile {
     }
 }
 
+impl Hash for Tile {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl PartialEq for Tile {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Tile {}
+
 struct Tiles {
     side_size: f32,
-    tiles: Vec<Tile>,
+    tiles: HashSet<Tile>,
     tile_queue: VecDeque<Tile>,
+    rng: ThreadRng,
+    carver_tiles: Vec<Tile>,
 }
 
 impl Tiles {
     fn new(side_size: f32) -> Self {
         let mut result = Self {
             side_size,
-            tiles: Vec::new(),
+            tiles: HashSet::new(),
             tile_queue: VecDeque::new(),
+            rng: rand::rng(),
+            carver_tiles: Vec::new(),
         };
 
         let first = result.make_triangle_at(Vec2::new(0., 0.), TriangleOrientation::Up);
@@ -117,30 +157,26 @@ impl Tiles {
         let bottom = point.y - self.side_size * SQRT_3_OVER_4;
 
         match orientation {
-            TriangleOrientation::Up => Tile {
-                center: point,
-                clockwise_points: vec![
+            TriangleOrientation::Up => {
+                let points = vec![
                     Vec2::new(left, bottom),
                     Vec2::new(point.x, top),
                     Vec2::new(right, bottom),
-                ],
-                original_side_size: self.side_size,
-                orientation,
-            },
-            TriangleOrientation::Down => Tile {
-                center: point,
-                clockwise_points: vec![
+                ];
+                Tile::new(point, points, orientation, self.side_size)
+            }
+            TriangleOrientation::Down => {
+                let points = vec![
                     Vec2::new(left, top),
                     Vec2::new(right, top),
                     Vec2::new(point.x, bottom),
-                ],
-                original_side_size: self.side_size,
-                orientation,
-            },
+                ];
+                Tile::new(point, points, orientation, self.side_size)
+            }
         }
     }
 
-    fn process_tile_queue(&mut self) {
+    fn process_tile_queue(&mut self) -> bool {
         if let Some(tile) = self.tile_queue.pop_front() {
             for position in tile.neighboring_positions() {
                 if position.x > -1.
@@ -158,37 +194,106 @@ impl Tiles {
                 }
             }
 
-            self.tiles.push(tile.clone());
+            self.tiles.insert(tile);
+        }
+
+        if self.tile_queue.is_empty() {
+            let mut possible_tiles = self.tiles.clone().into_iter().collect::<Vec<Tile>>();
+            possible_tiles.shuffle(&mut self.rng);
+
+            for tile in possible_tiles[0..50].iter() {
+                self.tiles.remove(tile);
+                self.carver_tiles.push(tile.clone());
+            }
+            true
+        } else {
+            false
         }
     }
+
+    fn find_tile_at(&self, position: Vec2) -> Option<Tile> {
+        for tile in self.tiles.iter() {
+            if tile.contains_point(position) {
+                return Some(tile.clone());
+            }
+        }
+        None
+    }
+
+    fn carve(&mut self) -> bool {
+        if self.carver_tiles.is_empty() {
+            return true;
+        }
+
+        let mut next_carvers = Vec::new();
+        for carver_tile in self.carver_tiles.iter() {
+            let position = *carver_tile
+                .neighboring_positions()
+                .choose(&mut self.rng)
+                .unwrap();
+            if let Some(tile) = self.find_tile_at(position) {
+                self.tiles.remove(&tile);
+                next_carvers.push(tile);
+            }
+        }
+        self.carver_tiles = next_carvers.clone();
+        false
+    }
+}
+
+enum GameState {
+    GeneratingTriangles,
+    Carving,
+    Ready,
 }
 
 pub struct Game {
     tiles: Tiles,
     ticks: usize,
+    state: GameState,
 }
 
 impl Game {
     pub fn new() -> Self {
         let tiles = Tiles::new(0.1);
-        Self { tiles, ticks: 0 }
+        Self {
+            tiles,
+            ticks: 0,
+            state: GameState::GeneratingTriangles,
+        }
     }
 
     pub fn tick(&mut self, mut command_arena: Vec<Command>) -> Vec<Command> {
         use Command::*;
 
-        self.tiles.process_tile_queue();
-
         self.ticks += 1;
-        if self.ticks > 50 {
+        if self.ticks > 1 {
             self.ticks = 0;
+            match self.state {
+                GameState::GeneratingTriangles => {
+                    if self.tiles.process_tile_queue() {
+                        self.state = GameState::Carving;
+                    }
+                }
+                GameState::Carving => {
+                    if self.tiles.carve() {
+                        self.state = GameState::Ready;
+                    }
+                }
+                GameState::Ready => {}
+            };
         }
 
         command_arena.clear();
         command_arena.push(Clear(Vec3::new(0., 0., 0.)));
+        let color = match self.state {
+            GameState::GeneratingTriangles => Vec3::ONE * 0.5,
+            GameState::Carving => Vec3::ONE * 0.75,
+            _ => Vec3::new(1., 0., 1.),
+        };
         for tile in self.tiles.tiles.iter() {
             for (l, r) in tile.edges() {
-                command_arena.push(RenderLine((l, r, Vec3::ONE)));
+                command_arena.push(RenderLine((l, r, color)));
             }
         }
         command_arena

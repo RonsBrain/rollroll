@@ -1,12 +1,12 @@
 mod game;
 
 use crate::game::{Command, Game};
-extern crate sdl3;
+extern crate sdl2;
 
 use glam::{Vec2, Vec3};
-use sdl3::event::{Event, WindowEvent};
-use sdl3::keyboard::Keycode;
-use sdl3::pixels::Color;
+use sdl2::event::{Event, WindowEvent};
+use sdl2::keyboard::Keycode;
+use sdl2::pixels::Color;
 use std::time::Duration;
 
 fn vec3_to_color(normalized_color: &Vec3) -> Color {
@@ -17,27 +17,27 @@ fn vec3_to_color(normalized_color: &Vec3) -> Color {
     )
 }
 
-fn logical_coordinates(point: &Vec2, (window_w, window_h): (i32, i32)) -> (f32, f32) {
+fn logical_coordinates(point: &Vec2, (window_w, window_h): (i32, i32)) -> (i32, i32) {
     let dimension = window_w.max(window_h) as f32;
     (
-        dimension * ((point.x + 1.) * 0.5) - (dimension - window_w as f32) * 0.5,
-        dimension * ((-point.y + 1.) * 0.5) - (dimension - window_h as f32) * 0.5,
+        (dimension * ((point.x + 1.) * 0.5) - (dimension - window_w as f32) * 0.5) as i32,
+        (dimension * ((-point.y + 1.) * 0.5) - (dimension - window_h as f32) * 0.5) as i32,
     )
 }
 
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let sdl_context = sdl3::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
+    let sdl_context = sdl2::init()?;
+    let video_subsystem = sdl_context.video()?;
 
     let window = video_subsystem
         .window("RollRoll", 800, 600)
-        .fullscreen()
+        .fullscreen_desktop()
         .build()
         .map_err(|e| e.to_string())?;
 
-    let mut canvas = window.into_canvas();
+    let mut canvas = window.into_canvas().build()?;
 
-    let mut event_pump = sdl_context.event_pump().unwrap();
+    let mut event_pump = sdl_context.event_pump()?;
     let mut command_arena: Vec<Command> = Vec::new();
     let mut window_size: (i32, i32) = (0, 0);
     let mut game = Game::new();

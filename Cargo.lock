@@ -4,40 +4,21 @@ version = 4
 
 [[package]]
 name = "bitflags"
-version = "2.9.4"
+version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2261d10cca569e4643e526d8dc2e62e433cc8aba21ab764233731f8d369bf394"
+checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
-name = "cc"
-version = "1.2.36"
+name = "c_vec"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5252b3d2648e5eedbc1a6f501e3c795e07025c1e93bbf8bbdd6eef7f447a6d54"
-dependencies = [
- "find-msvc-tools",
- "shlex",
-]
+checksum = "fdd7a427adc0135366d99db65b36dae9237130997e560ed61118041fb72be6e8"
 
 [[package]]
 name = "cfg-if"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2fd1289c04a9ea8cb22300a459a72a385d7c73d3259e2ed7dcb2af674838cfa9"
-
-[[package]]
-name = "cmake"
-version = "0.1.54"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7caa3f9de89ddbe2c607f4101924c5abec803763ae9534e4f4d7d8f84aa81f0"
-dependencies = [
- "cc",
-]
-
-[[package]]
-name = "find-msvc-tools"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fd99930f64d146689264c637b5af2f0233a933bef0d8570e2526bf9e083192d"
 
 [[package]]
 name = "getrandom"
@@ -137,88 +118,32 @@ version = "0.1.0"
 dependencies = [
  "glam",
  "rand",
- "sdl3",
- "sdl3-image-sys",
+ "sdl2",
 ]
 
 [[package]]
-name = "rpkg-config"
-version = "0.1.2"
+name = "sdl2"
+version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a2d2f3481209a6b42eec2fbb49063fb4e8d35b57023401495d4fe0f85c817f0"
-
-[[package]]
-name = "sdl3"
-version = "0.14.26"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20199030cecbe3a297f66663e9a08bad4ddb09fa2d3bf7ab198bb38ffeeabe6f"
+checksum = "2d42407afc6a8ab67e36f92e80b8ba34cbdc55aaeed05249efe9a2e8d0e9feef"
 dependencies = [
  "bitflags",
+ "c_vec",
  "lazy_static",
  "libc",
- "sdl3-image-sys",
- "sdl3-sys",
- "sdl3-ttf-sys",
+ "sdl2-sys",
 ]
 
 [[package]]
-name = "sdl3-image-src"
-version = "3.2.4"
+name = "sdl2-sys"
+version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4d0c6070f236297a8e7931cbe5f652e3f0e5a8a214b12984357bd4904874cc7"
-
-[[package]]
-name = "sdl3-image-sys"
-version = "0.1.3+SDL3-image-3.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8aae23fb7f3ba24788747a310142cce9743243f1d6cb52ce7c8a94ba82de1e22"
+checksum = "3ff61407fc75d4b0bbc93dc7e4d6c196439965fbef8e4a4f003a36095823eac0"
 dependencies = [
- "cmake",
- "rpkg-config",
- "sdl3-image-src",
- "sdl3-sys",
+ "cfg-if",
+ "libc",
+ "version-compare",
 ]
-
-[[package]]
-name = "sdl3-src"
-version = "3.2.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8447739fe8a492670e2f8c60bf821bb0f4260bd05019e4333ed483602a5cfe75"
-
-[[package]]
-name = "sdl3-sys"
-version = "0.4.9+SDL3-3.2.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8cfee7f8f83070eff43260fece9c814a4c438e3ab754cf7846ccf31d370340ec"
-dependencies = [
- "cmake",
- "rpkg-config",
- "sdl3-src",
-]
-
-[[package]]
-name = "sdl3-ttf-src"
-version = "3.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f28923d2ce72ff317d8eb7cec97ddfb8f351c330d7bcbf8c76e91332122c93b3"
-
-[[package]]
-name = "sdl3-ttf-sys"
-version = "0.1.3+SDL3-ttf-3.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b1fb9599629d232ddc3a8cd3a884e28a9f98abed7e6cac597d9d5c3fddc74c1"
-dependencies = [
- "cmake",
- "rpkg-config",
- "sdl3-sys",
- "sdl3-ttf-src",
-]
-
-[[package]]
-name = "shlex"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "syn"
@@ -236,6 +161,12 @@ name = "unicode-ident"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f63a545481291138910575129486daeaf8ac54aee4387fe7906919f7830c7d9d"
+
+[[package]]
+name = "version-compare"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "579a42fc0b8e0c63b76519a339be31bed574929511fa53c1a3acae26eb258f29"
 
 [[package]]
 name = "wasi"

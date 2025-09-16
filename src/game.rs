@@ -131,7 +131,8 @@ struct Tiles {
     tiles: HashSet<Tile>,
     tile_queue: VecDeque<Tile>,
     rng: ThreadRng,
-    carver_tiles: Vec<Tile>,
+    carver_tiles: VecDeque<Tile>,
+    possible_tiles: usize,
 }
 
 impl Tiles {
@@ -141,7 +142,8 @@ impl Tiles {
             tiles: HashSet::new(),
             tile_queue: VecDeque::new(),
             rng: rand::rng(),
-            carver_tiles: Vec::new(),
+            carver_tiles: VecDeque::new(),
+            possible_tiles: 0,
         };
 
         let first = result.make_triangle_at(Vec2::new(0., 0.), TriangleOrientation::Up);
@@ -177,6 +179,10 @@ impl Tiles {
     }
 
     fn process_tile_queue(&mut self) -> bool {
+        if self.tile_queue.is_empty() {
+            return true;
+        }
+
         if let Some(tile) = self.tile_queue.pop_front() {
             for position in tile.neighboring_positions() {
                 if position.x > -1.
@@ -198,12 +204,13 @@ impl Tiles {
         }
 
         if self.tile_queue.is_empty() {
+            self.possible_tiles = self.tiles.len();
             let mut possible_tiles = self.tiles.clone().into_iter().collect::<Vec<Tile>>();
             possible_tiles.shuffle(&mut self.rng);
 
             for tile in possible_tiles[0..50].iter() {
                 self.tiles.remove(tile);
-                self.carver_tiles.push(tile.clone());
+                self.carver_tiles.push_back(tile.clone());
             }
             true
         } else {
@@ -225,18 +232,25 @@ impl Tiles {
             return true;
         }
 
-        let mut next_carvers = Vec::new();
-        for carver_tile in self.carver_tiles.iter() {
-            let position = *carver_tile
-                .neighboring_positions()
-                .choose(&mut self.rng)
-                .unwrap();
-            if let Some(tile) = self.find_tile_at(position) {
-                self.tiles.remove(&tile);
-                next_carvers.push(tile);
-            }
+        let carver = self.carver_tiles.pop_front().unwrap();
+        let possible_tiles = carver
+            .neighboring_positions()
+            .iter()
+            .map(|p| self.find_tile_at(*p))
+            .filter(|p| !p.is_none())
+            .map(|p| p.unwrap())
+            .collect::<Vec<Tile>>();
+
+        if let Some(choice) = possible_tiles.choose(&mut self.rng) {
+            self.tiles.remove(choice);
+            self.carver_tiles.push_back(choice.clone());
         }
-        self.carver_tiles = next_carvers.clone();
+
+        let ratio = self.tiles.len() as f32 / self.possible_tiles as f32;
+        if ratio < 0.25 {
+            self.carver_tiles.clear();
+            return true;
+        }
         false
     }
 }
@@ -267,6 +281,12 @@ impl Game {
         use Command::*;
 
         self.ticks += 1;
+        loop {
+            if self.tiles.process_tile_queue() {
+                break;
+            }
+        }
+
         if self.ticks > 1 {
             self.ticks = 0;
             match self.state {

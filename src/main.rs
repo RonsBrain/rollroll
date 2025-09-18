@@ -1,6 +1,6 @@
-mod game;
+mod engine;
 
-use crate::game::{Command, Game};
+use crate::engine::game::{Command, Game};
 extern crate sdl2;
 
 use glam::{Vec2, Vec3};
@@ -121,18 +121,23 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                     canvas.set_draw_color(color);
                     canvas.clear();
                 }
-                Command::RenderLine((p1, p2, normalized_color)) => {
-                    let color = vec3_to_color(normalized_color);
-                    let start = logical_coordinates(p1, window_size);
-                    let end = logical_coordinates(p2, window_size);
-                    canvas.set_draw_color(color);
-                    canvas.draw_line(start, end)?;
-                }
                 Command::RenderCircle((p, r, normalized_color)) => {
                     let color = vec3_to_color(normalized_color);
                     let point = logical_coordinates(p, window_size);
                     let radius = logical_length(r, window_size);
                     canvas.filled_circle(point.0 as i16, point.1 as i16, radius as i16, color)?;
+                }
+                Command::RenderPolygon((vertices, normalized_color)) => {
+                    let color = vec3_to_color(normalized_color);
+                    let (logical_x, logical_y): (Vec<i16>, Vec<i16>) = vertices
+                        .iter()
+                        .map(|v| {
+                            let (x, y) = logical_coordinates(v, window_size);
+                            (x as i16, y as i16)
+                        })
+                        .unzip();
+
+                    canvas.aa_polygon(&logical_x[0..], &logical_y[0..], color)?;
                 }
             }
         }

@@ -1,4 +1,5 @@
 use crate::engine::primitives::Polygon;
+use crate::engine::quadtree::QuadTree;
 use glam::Vec2;
 use rand::Rng;
 use rand::prelude::*;
@@ -9,12 +10,20 @@ use std::time::{Duration, Instant};
 const SQRT_3_OVER_2: f32 = 1.732_050_8 / 2.;
 
 pub struct World {
-    tiles: Vec<Polygon>,
+    polygons: Box<QuadTree>,
 }
 
 impl World {
-    pub fn tiles(&self) -> std::slice::Iter<'_, Polygon> {
-        self.tiles.iter()
+    pub fn generator(tile_size: f32, dimensions: Vec2) -> WorldGenerator {
+        WorldGenerator::new(tile_size, dimensions)
+    }
+
+    fn new(polygons: Box<QuadTree>) -> Self {
+        Self { polygons }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Polygon> {
+        self.polygons.iter()
     }
 }
 
@@ -23,31 +32,36 @@ enum BuildStage {
     Carving,
 }
 
-pub struct WorldBuilder {
+pub enum GeneratorResult {
+    Generating(WorldGenerator),
+    Done(World),
+}
+
+pub struct WorldGenerator {
     tile_size: f32,
     dimensions: Vec2,
-    generated_tiles: Vec<Polygon>,
     queue: VecDeque<(Vec2, bool, bool)>,
     possible_carvers: Vec<(Vec2, f32)>,
     carvers: VecDeque<(Vec2, f32)>,
     stage: BuildStage,
     start_num_tiles: usize,
+    store: Box<QuadTree>,
 }
 
-impl WorldBuilder {
-    pub fn new(tile_size: f32, dimensions: Vec2) -> Self {
+impl WorldGenerator {
+    fn new(tile_size: f32, dimensions: Vec2) -> Self {
         let mut queue = VecDeque::new();
         let first = Vec2::new(-dimensions.x / 2., dimensions.y / 2.);
         queue.push_back((first, false, true));
         Self {
             tile_size,
             dimensions,
-            generated_tiles: vec![],
             queue,
             possible_carvers: vec![],
             carvers: VecDeque::new(),
             stage: BuildStage::GeneratingGrid,
             start_num_tiles: 0,
+            store: Box::new(QuadTree::new()),
         }
     }
 
@@ -74,7 +88,7 @@ impl WorldBuilder {
             let midpoint = midpoints.choose(&mut rng).unwrap();
             let direction = center.angle_to(*midpoint);
             self.possible_carvers.push((center, direction));
-            self.generated_tiles.push(generated);
+            self.store.insert(generated);
 
             let mut next_center = center + Vec2::new(self.tile_size / 2., 0.);
 
@@ -92,17 +106,6 @@ impl WorldBuilder {
         }
     }
 
-    /* A very lazy method for finding a polygon that contains a point */
-    fn find_polygon(&self, point: Vec2) -> Option<usize> {
-        for (idx, t) in self.generated_tiles.iter().enumerate() {
-            if t.contains_point(point) {
-                return Some(idx);
-            }
-        }
-
-        None
-    }
-
     /* Generates a new world. It incrementally performs the generation steps, checking to see if it
      * has exceeded the amount of time it has been allotted. This allows the game engine to send
      * back render commands while the generation is still in progress.
@@ -110,7 +113,7 @@ impl WorldBuilder {
      * This could be accomplished by having the generation happen in its own thread, but this is a
      * bit simpler to implement. We may need to do the thread idea in the future.
      */
-    pub fn generate(&mut self, allowed_time: Duration) -> Option<World> {
+    pub fn generate(mut self, allowed_time: Duration) -> GeneratorResult {
         let start = Instant::now();
         let mut rng = rand::rng();
 
@@ -123,7 +126,7 @@ impl WorldBuilder {
                 BuildStage::GeneratingGrid => {
                     self.process_queue();
                     if self.queue.is_empty() {
-                        self.start_num_tiles = self.generated_tiles.len();
+                        self.start_num_tiles = self.store.len();
                         let mut rng = rand::rng();
                         self.possible_carvers.shuffle(&mut rng);
                         self.carvers = VecDeque::from(self.possible_carvers[0..10].to_vec());
@@ -137,10 +140,8 @@ impl WorldBuilder {
                  */
                 BuildStage::Carving => {
                     if let Some((carver, direction)) = self.carvers.pop_front() {
-                        if let Some(idx) = self.find_polygon(carver) {
-                            self.generated_tiles.swap_remove(idx);
-                        }
-                        if self.generated_tiles.len() as f32 / (self.start_num_tiles as f32) > 0.5 {
+                        self.store.remove_from_point(carver);
+                        if self.store.len() as f32 / (self.start_num_tiles as f32) > 0.5 {
                             let next_carver = carver
                                 + Vec2::new(
                                     f32::cos(direction) * self.tile_size,
@@ -153,16 +154,14 @@ impl WorldBuilder {
                             self.carvers.push_back((next_carver, next_direction));
                         }
                     } else {
-                        return Some(World {
-                            tiles: self.generated_tiles.clone(),
-                        });
+                        return GeneratorResult::Done(World::new(self.store));
                     }
                 }
             }
 
             let elapsed = start.elapsed();
             if elapsed > allowed_time {
-                return None;
+                return GeneratorResult::Generating(self);
             }
         }
     }

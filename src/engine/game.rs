@@ -1,4 +1,4 @@
-use crate::engine::world::{World, WorldBuilder};
+use crate::engine::world::{GeneratorResult, World, WorldGenerator};
 use glam::{Vec2, Vec3};
 use std::time::Duration;
 
@@ -9,7 +9,7 @@ pub enum Command {
 }
 
 enum GameState {
-    Generating(WorldBuilder),
+    Generating(WorldGenerator),
     Ready(World),
 }
 
@@ -20,14 +20,17 @@ pub struct Game {
 
 impl Game {
     pub fn new() -> Self {
-        let builder = WorldBuilder::new(0.1, Vec2::new(2.5, 2.5));
         Self {
-            state: GameState::Generating(builder),
+            state: GameState::Generating(World::generator(0.1, Vec2::new(2., 2.))),
             player_position: Vec2::ZERO,
         }
     }
 
-    pub fn tick(&mut self, movement: &Vec2, mut command_arena: Vec<Command>) -> Vec<Command> {
+    pub fn tick(
+        mut self,
+        movement: &Vec2,
+        mut command_arena: Vec<Command>,
+    ) -> (Self, Vec<Command>) {
         use Command::*;
 
         self.player_position += movement * 0.01;
@@ -36,18 +39,21 @@ impl Game {
         command_arena.push(Clear(Vec3::new(0., 0., 0.)));
 
         match self.state {
-            GameState::Generating(ref mut builder) => {
-                if let Some(world) = builder.generate(Duration::from_millis(10)) {
-                    self.state = GameState::Ready(world);
+            GameState::Generating(generator) => {
+                match generator.generate(Duration::from_millis(10)) {
+                    GeneratorResult::Generating(generator) => {
+                        command_arena.push(Command::RenderCircle((
+                            Vec2::ZERO,
+                            0.1,
+                            Vec3::new(1., 0., 1.),
+                        )));
+                        self.state = GameState::Generating(generator)
+                    }
+                    GeneratorResult::Done(world) => self.state = GameState::Ready(world),
                 }
-                command_arena.push(Command::RenderCircle((
-                    Vec2::ZERO,
-                    0.1,
-                    Vec3::new(1., 0., 1.),
-                )));
             }
-            GameState::Ready(ref mut world) => {
-                for tile in world.tiles() {
+            GameState::Ready(ref world) => {
+                for tile in world.iter() {
                     command_arena.push(Command::RenderPolygon((
                         tile.vertices().copied().collect(),
                         Vec3::ONE,
@@ -56,6 +62,6 @@ impl Game {
             }
         };
 
-        command_arena
+        (self, command_arena)
     }
 }

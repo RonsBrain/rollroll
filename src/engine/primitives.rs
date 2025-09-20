@@ -1,23 +1,33 @@
 use glam::{Mat2, Vec2};
+use std::hash::{Hash, Hasher};
 use std::iter::zip;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static POLYGON_ID: AtomicUsize = AtomicUsize::new(1);
 
 const SQRT_3_OVER_4: f32 = 1.732_050_8 / 4.;
 
 #[derive(Clone, Debug)]
 pub struct Polygon {
+    id: usize,
     vertices: Vec<Vec2>,
     edges: Vec<(Vec2, Vec2)>,
 }
 
 impl Polygon {
     pub fn new(vertices: Vec<Vec2>) -> Self {
+        let id = POLYGON_ID.fetch_add(1, Ordering::Relaxed);
         let edges = zip(
             vertices.clone(),
             vertices.clone().into_iter().cycle().skip(1),
         )
         .collect();
 
-        Self { vertices, edges }
+        Self {
+            id,
+            vertices,
+            edges,
+        }
     }
 
     pub fn new_triangle(size: f32, center: Vec2, rotation: f32) -> Self {
@@ -38,6 +48,10 @@ impl Polygon {
             .collect();
 
         Self::new(vertices)
+    }
+
+    pub fn id(&self) -> usize {
+        self.id
     }
 
     pub fn vertices(&self) -> std::slice::Iter<'_, Vec2> {
@@ -73,3 +87,17 @@ impl Polygon {
         true
     }
 }
+
+impl Hash for Polygon {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl PartialEq for Polygon {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Polygon {}

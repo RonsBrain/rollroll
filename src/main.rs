@@ -113,7 +113,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                 _ => {}
             }
         }
-        command_arena = game.tick(&movement, command_arena);
+        (game, command_arena) = game.tick(&movement, command_arena);
         for command in command_arena.iter() {
             match command {
                 Command::Clear(normalized_color) => {

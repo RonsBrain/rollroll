@@ -19,6 +19,18 @@ fn vec3_to_color(normalized_color: &Vec3) -> Color {
     )
 }
 
+/* For some reason, at least on my device, SDL2_gfx functions think that colors are AABBGGRR
+ * arranged in memory. I need to make a reversed version in order for the colors to look right.
+ */
+fn vec3_to_color_reversed(normalized_color: &Vec3) -> Color {
+    Color::RGBA(
+        255,
+        (normalized_color.z * 255.) as u8,
+        (normalized_color.y * 255.) as u8,
+        (normalized_color.x * 255.) as u8,
+    )
+}
+
 fn logical_coordinates(point: &Vec2, (window_w, window_h): (i32, i32)) -> (i32, i32) {
     let dimension = window_w.max(window_h) as f32;
     (
@@ -61,6 +73,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()
         .map_err(|e| e.to_string())?;
 
+    dbg!(window.window_pixel_format());
     let mut canvas = window.into_canvas().build()?;
 
     let mut event_pump = sdl_context.event_pump()?;
@@ -114,6 +127,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         (game, command_arena) = game.tick(&movement, command_arena);
+
         for command in command_arena.iter() {
             match command {
                 Command::Clear(normalized_color) => {
@@ -122,13 +136,13 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                     canvas.clear();
                 }
                 Command::RenderCircle((p, r, normalized_color)) => {
-                    let color = vec3_to_color(normalized_color);
+                    let color = vec3_to_color_reversed(normalized_color);
                     let point = logical_coordinates(p, window_size);
                     let radius = logical_length(r, window_size);
                     canvas.filled_circle(point.0 as i16, point.1 as i16, radius as i16, color)?;
                 }
                 Command::RenderPolygon((vertices, normalized_color)) => {
-                    let color = vec3_to_color(normalized_color);
+                    let color = vec3_to_color_reversed(normalized_color);
                     let (logical_x, logical_y): (Vec<i16>, Vec<i16>) = vertices
                         .iter()
                         .map(|v| {
@@ -137,7 +151,19 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                         })
                         .unzip();
 
-                    canvas.aa_polygon(&logical_x[0..], &logical_y[0..], color)?;
+                    canvas.polygon(&logical_x[0..], &logical_y[0..], color)?;
+                }
+                Command::RenderFilledPolygon((vertices, normalized_color)) => {
+                    let color = vec3_to_color_reversed(normalized_color);
+                    let (logical_x, logical_y): (Vec<i16>, Vec<i16>) = vertices
+                        .iter()
+                        .map(|v| {
+                            let (x, y) = logical_coordinates(v, window_size);
+                            (x as i16, y as i16)
+                        })
+                        .unzip();
+
+                    canvas.filled_polygon(&logical_x[0..], &logical_y[0..], color)?;
                 }
             }
         }

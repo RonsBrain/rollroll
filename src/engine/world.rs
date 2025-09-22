@@ -25,6 +25,10 @@ impl World {
     pub fn iter(&self) -> impl Iterator<Item = &Polygon> {
         self.polygons.iter()
     }
+
+    pub fn find_in_area(&self, area: &Polygon) -> impl Iterator<Item = &Polygon> {
+        self.polygons.find_in_area(area)
+    }
 }
 
 enum BuildStage {
@@ -72,26 +76,31 @@ impl WorldGenerator {
      */
     fn process_queue(&mut self) {
         if let Some((center, do_rotation, next_row_do_rotation)) = self.queue.pop_front() {
-            let mut rng = rand::rng();
-            let distance = self.tile_size * SQRT_3_OVER_2;
-            let rotation = match do_rotation {
-                true => std::f32::consts::PI,
-                false => 0.,
-            };
+            /* For now, the player will start at the center coordinate, so let's not place any
+             * tiles there. This prevents the player from getting immediately trapped.
+             */
+            if center.distance(Vec2::ZERO) > self.tile_size {
+                let mut rng = rand::rng();
+                let rotation = match do_rotation {
+                    true => std::f32::consts::PI,
+                    false => 0.,
+                };
 
-            let generated = Polygon::new_triangle(self.tile_size, center, rotation);
+                let generated = Polygon::new_triangle(self.tile_size, center, rotation);
 
-            let midpoints = generated
-                .edges()
-                .map(|(s, e)| s.midpoint(*e))
-                .collect::<Vec<Vec2>>();
-            let midpoint = midpoints.choose(&mut rng).unwrap();
-            let direction = center.angle_to(*midpoint);
-            self.possible_carvers.push((center, direction));
-            self.store.insert(generated);
+                let midpoints = generated
+                    .edges()
+                    .map(|(s, e)| s.midpoint(*e))
+                    .collect::<Vec<Vec2>>();
+                let midpoint = midpoints.choose(&mut rng).unwrap();
+                let direction = center.angle_to(*midpoint);
+                self.possible_carvers.push((center, direction));
+                self.store.insert(generated);
+            }
 
             let mut next_center = center + Vec2::new(self.tile_size / 2., 0.);
 
+            let distance = self.tile_size * SQRT_3_OVER_2;
             if next_center.x > self.dimensions.x / 2. {
                 next_center = Vec2::new(-self.dimensions.x / 2., center.y - distance);
                 if next_center.y < -self.dimensions.y / 2. {

@@ -57,6 +57,22 @@ impl Polygon {
         Self::new(vertices)
     }
 
+    pub fn new_regular(sides: usize, size: f32, center: Vec2, rotation: f32) -> Self {
+        assert!(sides > 2);
+
+        let angle = std::f32::consts::PI * 2. / sides as f32;
+        let model = (0..sides)
+            .map(|s| {
+                let rot = s as f32 * (angle + rotation);
+                Vec2::new(rot.cos(), rot.sin()) * size
+            })
+            .collect::<Vec<Vec2>>();
+
+        let vertices = model.iter().map(|v| v + center).collect();
+
+        Self::new(vertices)
+    }
+
     pub fn id(&self) -> usize {
         self.id
     }

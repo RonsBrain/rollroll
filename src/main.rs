@@ -73,7 +73,6 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    dbg!(window.window_pixel_format());
     let mut canvas = window.into_canvas().build()?;
 
     let mut event_pump = sdl_context.event_pump()?;
@@ -140,18 +139,6 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let point = logical_coordinates(p, window_size);
                     let radius = logical_length(r, window_size);
                     canvas.filled_circle(point.0 as i16, point.1 as i16, radius as i16, color)?;
-                }
-                Command::RenderPolygon((vertices, normalized_color)) => {
-                    let color = vec3_to_color_reversed(normalized_color);
-                    let (logical_x, logical_y): (Vec<i16>, Vec<i16>) = vertices
-                        .iter()
-                        .map(|v| {
-                            let (x, y) = logical_coordinates(v, window_size);
-                            (x as i16, y as i16)
-                        })
-                        .unzip();
-
-                    canvas.polygon(&logical_x[0..], &logical_y[0..], color)?;
                 }
                 Command::RenderFilledPolygon((vertices, normalized_color)) => {
                     let color = vec3_to_color_reversed(normalized_color);

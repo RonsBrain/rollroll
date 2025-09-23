@@ -1,3 +1,4 @@
+mod entities;
 pub mod game;
 mod primitives;
 mod quadtree;
